@@ -1,5 +1,9 @@
+import cv2
+import glob
 import numpy as np
 
+# Seed value
+np.random.seed(1234)
 
 class RBM:
     def __init__(self, visible_nodes=1, hidden_nodes=1, learning_rate=1e-3, max_epoch=100):
@@ -17,6 +21,7 @@ class RBM:
     """
     def train(self, data):
         for epoch in range(self.max_epoch):
+            np.random.shuffle(data)
             # Positive Phase - Sets hidden units on with probability p(h|v)
             positive_hidden_out, positive_hidden_binary = self.forward_hidden(data)
 
@@ -48,6 +53,11 @@ class RBM:
             # Delta_hidden_bias = p(h=1|v_0) - p(h=1|v_1)
             bias_hidden_delta = np.sum(positive_hidden_out - negative_hidden_out, keepdims=True, axis=0)
             self.bias_hidden += self.learning_rate * (bias_hidden_delta / data.shape[0])
+
+            # Show each steps progress
+            reconstructed_out = self.daydream(20)
+            draw_image(reconstructed_out, title="Reconstructed images", wait_time=100)
+            print("Epoch: ", epoch)
 
     def sigmoid(self, out):
         return 1 / (1 + np.exp(-out))
@@ -94,17 +104,55 @@ class RBM:
     def daydream(self, sample_size=1):
         visible_size, hidden_size = self.weights.shape
 
-        data = np.random.rand(sample_size, visible_size)
-        # Positive Phase
-        positive_hidden_out, positive_hidden_binary = self.forward_hidden(data)
+        # data = np.ones((sample_size, visible_size))
+        data = np.random.randint(0, 1, (sample_size, visible_size))
+        #data = data >= 0.5
+        #data = np.multiply(data, 1)
+        for _ in range(1):
+            # Positive Phase
+            positive_hidden_out, positive_hidden_binary = self.forward_hidden(data)
 
-        # Negative Phase (aka Daydreaming phase)
-        negative_visible_out, negative_visible_binary = self.forward_visible(positive_hidden_binary)
+            # Negative Phase (aka Daydreaming phase)
+            negative_visible_out, negative_visible_binary = self.forward_visible(positive_hidden_binary)
+            data = negative_visible_out
+        return np.multiply(negative_visible_binary, 1)
 
-        print("Reconstructed Data:\n", np.multiply(negative_visible_binary, 1))
-        print("-" * 100)
+def create_image_data(file_path):
+    training_data = []
+    for name in glob.glob(file_path):
+        # Simple 64 * 64 Binary Vector Example
+        # Converts Grayscale image to binary image( 0's and 1's only)
+        img = 1 - (cv2.imread(name, 0) / 255)
+
+        # Resizes image to easier to handle 64 *64 size: 4096 nodes
+        img = cv2.resize(img, (64, 64))
+
+        # Converts 64*64 image to vectors of size: (1, 1, 4096)
+        input_vector = img.reshape(64 * 64)
+        training_data.append(input_vector)
+
+    training_data = np.array(training_data)
+    draw_image(training_data, title="Original images", wait_time=100)
+    return training_data
+
+# Draws Reconstructed Images
+def draw_image(recon_img, title="Reconstructed images", wait_time=0):
+    img = np.float32(recon_img[0].reshape(64,64))
+    combined_imgs = img
+    for img_ in recon_img[1:]:
+        img_ = np.float32(img_.reshape(64,64))
+        combined_imgs = np.hstack((combined_imgs, img_))
+
+    if wait_time == 0:
+        print("Press Q to exit when window is selected")
+
+    cv2.imshow(title, combined_imgs)
+    if cv2.waitKey(wait_time) & 0xFF == ord('q'):
+        cv2.destroyAllWindows()
+
 
 def main():
+    """
     training_data = np.array(
         [[1, 1, 1, 0, 0, 0],
         [1, 0, 1, 0, 0, 0],
@@ -116,6 +164,15 @@ def main():
     rbm = RBM(visible_nodes=6, hidden_nodes=3, learning_rate=1e-1, max_epoch=1000)
     rbm.train(training_data)
     rbm.daydream(10)
+    """
+    training_data = create_image_data('./Example images/*')
+    rbm = RBM(visible_nodes=4096, hidden_nodes=2048, learning_rate=5e-3, max_epoch=1000)
+    rbm.train(training_data)
+
+    reconstructed_out = rbm.daydream(20)
+    #for index, recon_img in enumerate(reconstructed_out):
+    draw_image(reconstructed_out)
+    print("Finished")
 
 if __name__ == '__main__':
     main()
