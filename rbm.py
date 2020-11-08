@@ -7,9 +7,9 @@ np.random.seed(1234)
 
 class RBM:
     def __init__(self, visible_nodes=1, hidden_nodes=1, learning_rate=1e-3, max_epoch=100):
-        self.weights = np.random.rand(visible_nodes, hidden_nodes)
-        self.bias_hidden = np.random.rand(1, hidden_nodes)
-        self.bias_visible = np.random.rand(1, visible_nodes)
+        self.weights = np.random.normal(loc=0, scale=0.01, size=(visible_nodes, hidden_nodes))
+        self.bias_hidden = np.random.normal(loc=0, scale=0.01, size=(1, hidden_nodes))
+        self.bias_visible = np.random.normal(loc=0, scale=0.01, size=(1, visible_nodes))
         self.learning_rate = learning_rate
         self.max_epoch = max_epoch
 
@@ -20,8 +20,10 @@ class RBM:
     is set to 1 with a given probability p(v|h),
     """
     def train(self, data):
+        losses = []
         for epoch in range(self.max_epoch):
             np.random.shuffle(data)
+
             # Positive Phase - Sets hidden units on with probability p(h|v)
             positive_hidden_out, positive_hidden_binary = self.forward_hidden(data)
 
@@ -41,6 +43,8 @@ class RBM:
             """
             neg_assoc = np.dot(negative_visible_out.T, negative_hidden_out)
 
+            losses = np.sum(0.5 * ((data - negative_visible_binary)**2))
+
             # Updating parameters
             # Delta_weight = <v_i * h_j>_data - <v_i * h_j>_model
             weights_delta = pos_assoc - neg_assoc
@@ -53,11 +57,45 @@ class RBM:
             # Delta_hidden_bias = p(h=1|v_0) - p(h=1|v_1)
             bias_hidden_delta = np.sum(positive_hidden_out - negative_hidden_out, keepdims=True, axis=0)
             self.bias_hidden += self.learning_rate * (bias_hidden_delta / data.shape[0])
-
+            
+            status = self.draw_images_training(data[:10,:], negative_visible_binary[:10,:])
+            if status is False:
+                break
             # Show each steps progress
-            reconstructed_out = self.daydream(20)
-            draw_image(reconstructed_out, title="Reconstructed images", wait_time=100)
-            print("Epoch: ", epoch)
+            #reconstructed_out = self.daydream(20)
+            #draw_image(reconstructed_out, title="Daydreamed images", wait_time=100)
+            print("Epoch: ", epoch, " Reconstruction Error: ", losses / data.shape[0])
+
+    def draw_images_training(self, orig_images, recon_images):
+        orig_image = np.float32(orig_images[0].reshape(64,64))
+        for img_ in orig_images[1:]:
+            img_ = np.float32(img_.reshape(64,64))
+            orig_image = np.hstack((orig_image, img_))
+
+        recon_image = np.float32(recon_images[0].reshape(64,64))
+        for img_ in recon_images[1:]:
+            
+            img_ = np.float32(img_.reshape(64,64))
+            recon_image = np.hstack((recon_image, img_))
+
+        image = np.vstack((orig_image, recon_image))
+        cv2.imshow("Original/Reconstructed Images", image)
+        if cv2.waitKey(100) & 0xFF == ord('q'):
+            cv2.destroyAllWindows()
+            return False
+        return True
+
+    def draw_images_daydreaming(self, daydreamed_images):
+        combined_imgs = np.float32(daydreamed_images[0].reshape(64,64))
+        for img_ in daydreamed_images[1:]:
+            img_ = np.float32(img_.reshape(64,64))
+            combined_imgs = np.hstack((combined_imgs, img_))
+
+        print("Press Q to exit when window is selected")
+
+        cv2.imshow("Daydreamed Images", combined_imgs)
+        if cv2.waitKey(0) & 0xFF == ord('q'):
+            cv2.destroyAllWindows()
 
     def sigmoid(self, out):
         return 1 / (1 + np.exp(-out))
@@ -104,18 +142,19 @@ class RBM:
     def daydream(self, sample_size=1):
         visible_size, hidden_size = self.weights.shape
 
-        # data = np.ones((sample_size, visible_size))
+        #data = np.ones((sample_size, visible_size))
         data = np.random.randint(0, 1, (sample_size, visible_size))
-        #data = data >= 0.5
-        #data = np.multiply(data, 1)
-        for _ in range(1):
+        # Sampling from model distribution (Multiple iterations makes it work)
+        for _ in range(100):
             # Positive Phase
             positive_hidden_out, positive_hidden_binary = self.forward_hidden(data)
 
             # Negative Phase (aka Daydreaming phase)
             negative_visible_out, negative_visible_binary = self.forward_visible(positive_hidden_binary)
             data = negative_visible_out
-        return np.multiply(negative_visible_binary, 1)
+        self.draw_images_daydreaming(
+            np.multiply(
+                negative_visible_binary, 1))
 
 def create_image_data(file_path):
     training_data = []
@@ -132,24 +171,7 @@ def create_image_data(file_path):
         training_data.append(input_vector)
 
     training_data = np.array(training_data)
-    draw_image(training_data, title="Original images", wait_time=100)
     return training_data
-
-# Draws Reconstructed Images
-def draw_image(recon_img, title="Reconstructed images", wait_time=0):
-    img = np.float32(recon_img[0].reshape(64,64))
-    combined_imgs = img
-    for img_ in recon_img[1:]:
-        img_ = np.float32(img_.reshape(64,64))
-        combined_imgs = np.hstack((combined_imgs, img_))
-
-    if wait_time == 0:
-        print("Press Q to exit when window is selected")
-
-    cv2.imshow(title, combined_imgs)
-    if cv2.waitKey(wait_time) & 0xFF == ord('q'):
-        cv2.destroyAllWindows()
-
 
 def main():
     """
@@ -166,12 +188,9 @@ def main():
     rbm.daydream(10)
     """
     training_data = create_image_data('./Example images/*')
-    rbm = RBM(visible_nodes=4096, hidden_nodes=2048, learning_rate=5e-3, max_epoch=1000)
+    rbm = RBM(visible_nodes=4096, hidden_nodes=750, learning_rate=5e-3, max_epoch=1000)
     rbm.train(training_data)
-
-    reconstructed_out = rbm.daydream(20)
-    #for index, recon_img in enumerate(reconstructed_out):
-    draw_image(reconstructed_out)
+    rbm.daydream(10)
     print("Finished")
 
 if __name__ == '__main__':
