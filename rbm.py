@@ -61,11 +61,10 @@ class RBM:
             status = self.draw_images_training(data[:10,:], negative_visible_binary[:10,:])
             if status is False:
                 break
-            # Show each steps progress
-            #reconstructed_out = self.daydream(20)
-            #draw_image(reconstructed_out, title="Daydreamed images", wait_time=100)
+
             print("Epoch: ", epoch, " Reconstruction Error: ", losses / data.shape[0])
 
+    # Visualize training images and reconstructed images
     def draw_images_training(self, orig_images, recon_images):
         orig_image = np.float32(orig_images[0].reshape(64,64))
         for img_ in orig_images[1:]:
@@ -85,6 +84,7 @@ class RBM:
             return False
         return True
 
+    # Visualize sampled data from model (Daydreaming)
     def draw_images_daydreaming(self, daydreamed_images):
         combined_imgs = np.float32(daydreamed_images[0].reshape(64,64))
         for img_ in daydreamed_images[1:]:
